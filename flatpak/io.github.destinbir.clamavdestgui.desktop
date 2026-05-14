@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=ClamAV Dest GUI
+Comment=Code, Growth Alive desktop scanner for ClamAV
+Exec=clamav-dest-gui
+Icon=io.github.destinbir.clamavdestgui
+Terminal=false
+Categories=Utility;Security;

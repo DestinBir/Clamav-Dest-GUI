@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.destinbir.clamavdestgui</id>
+  <name>ClamAV Dest GUI</name>
+  <summary>ClamAV scanner and quarantine manager</summary>
+  <description>
+    <p>ClamAV Dest GUI is a branded desktop interface for scanning folders, refreshing signatures, and managing quarantine with ClamAV.</p>
+  </description>
+  <launchable type="desktop-id">io.github.destinbir.clamavdestgui.desktop</launchable>
+  <url type="homepage">https://codegrowthalive.com</url>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer_name>Code, Growth Alive</developer_name>
+</component>

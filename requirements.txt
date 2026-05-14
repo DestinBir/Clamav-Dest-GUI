@@ -1,0 +1,2 @@
+# Runtime dependencies are intentionally minimal.
+# The application uses the Python standard library plus Tkinter.

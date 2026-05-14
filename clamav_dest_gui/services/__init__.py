@@ -1,0 +1,1 @@
+"""Service layer for command execution and external integrations."""

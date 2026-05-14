@@ -1,0 +1,25 @@
+app-id: io.github.destinbir.clamavdestgui
+runtime: org.freedesktop.Platform
+runtime-version: "24.08"
+sdk: org.freedesktop.Sdk
+command: clamav-dest-gui
+finish-args:
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --filesystem=home
+
+modules:
+  - name: clamav-dest-gui
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 flatpak/clamav-dest-gui /app/bin/clamav-dest-gui
+      - install -Dm644 flatpak/io.github.destinbir.clamavdestgui.desktop /app/share/applications/io.github.destinbir.clamavdestgui.desktop
+      - install -Dm644 flatpak/io.github.destinbir.clamavdestgui.metainfo.xml /app/share/metainfo/io.github.destinbir.clamavdestgui.metainfo.xml
+      - install -Dm644 logo.png /app/share/icons/hicolor/256x256/apps/io.github.destinbir.clamavdestgui.png
+      - install -Dm644 company_logo.png /app/share/icons/hicolor/128x128/apps/io.github.destinbir.clamavdestgui-compact.png
+      - cp -r clamav_dest_gui /app/lib/python3.12/site-packages/
+    sources:
+      - type: dir
+        path: ..
