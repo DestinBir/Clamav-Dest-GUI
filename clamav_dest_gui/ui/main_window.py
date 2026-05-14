@@ -7,259 +7,322 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 
 from clamav_dest_gui.config import AppPaths, ScanState
-from clamav_dest_gui.services.clamav import ClamAVService
+from clamav_dest_gui.services.clamav import ClamAVService, DiskTarget
 
 
-BG = "#1a1a2e"
-SURFACE = "#16213e"
-SURFACE_2 = "#10192f"
-CARD = "#0f3460"
-ACCENT = "#e94560"
-GREEN = "#4ecca3"
-YELLOW = "#f5a623"
-BLUE = "#5aa9ff"
-TEXT = "#eaeaea"
-MUTED = "#8892a4"
-HIGHLIGHT = "#ffd166"
-FONT_MAIN = ("Courier New", 11)
-FONT_TITLE = ("Courier New", 18, "bold")
-FONT_SUBTITLE = ("Courier New", 10, "bold")
-FONT_LABEL = ("Courier New", 10)
+BG = "#080d14"
+PANEL = "#101722"
+PANEL_2 = "#141d2b"
+FIELD = "#0c121c"
+BORDER = "#223044"
+ACCENT = "#38bdf8"
+ACCENT_2 = "#22c55e"
+DANGER = "#fb7185"
+WARNING = "#fbbf24"
+TEXT = "#e5edf6"
+MUTED = "#8b9aaf"
+INK = "#050812"
+
+FONT_MAIN = ("Segoe UI", 10)
+FONT_SMALL = ("Segoe UI", 9)
+FONT_TITLE = ("Segoe UI", 22, "bold")
+FONT_SECTION = ("Segoe UI", 10, "bold")
+FONT_MONO = ("Consolas", 10)
 
 
 class MainWindow(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("ClamAV Scanner")
-        self.geometry("820x680")
-        self.resizable(True, True)
+        self.title("ClamAV Dest GUI")
+        self.geometry("1040x720")
+        self.minsize(900, 620)
         self.configure(bg=BG)
 
         self.paths = AppPaths()
         self.state = ScanState()
 
         self.disk_path = tk.StringVar()
+        self.disk_choice = tk.StringVar()
         self.quarantine_path = tk.StringVar(value=str(self.paths.default_quarantine))
         self.use_sudo = tk.BooleanVar(value=True)
         self.infected_count = tk.IntVar(value=0)
         self.scanned_count = tk.IntVar(value=0)
-        self.quarantine_ready = tk.StringVar(value="Yes")
+        self.quarantine_ready = tk.StringVar(value="Ready")
         self.status_text = tk.StringVar(value="Idle")
+
+        self.disk_targets: list[DiskTarget] = []
+        self.disk_labels: dict[str, DiskTarget] = {}
 
         self.service = ClamAVService(self._schedule_log, self._schedule_counts)
         self.logo_image = self._load_logo()
 
+        self._configure_styles()
         self._build_ui()
+        self._refresh_disks(log=False)
 
-    def _build_ui(self):
-        hero = tk.Frame(self, bg=BG)
-        hero.pack(fill="x", padx=24, pady=(20, 14))
+    def _configure_styles(self) -> None:
+        style = ttk.Style(self)
+        style.theme_use("clam")
+        style.configure("TProgressbar", troughcolor=FIELD, background=ACCENT_2, bordercolor=FIELD, thickness=5)
+        style.configure(
+            "Dark.TCombobox",
+            fieldbackground=FIELD,
+            background=PANEL_2,
+            foreground=TEXT,
+            arrowcolor=TEXT,
+            bordercolor=BORDER,
+            lightcolor=BORDER,
+            darkcolor=BORDER,
+            padding=(10, 6),
+        )
+        style.map(
+            "Dark.TCombobox",
+            fieldbackground=[("readonly", FIELD)],
+            foreground=[("readonly", TEXT)],
+            selectbackground=[("readonly", FIELD)],
+            selectforeground=[("readonly", TEXT)],
+        )
 
-        hero_card = tk.Frame(hero, bg=SURFACE_2, highlightthickness=1, highlightbackground="#20304f")
-        hero_card.pack(fill="x")
+    def _build_ui(self) -> None:
+        shell = tk.Frame(self, bg=BG)
+        shell.pack(fill="both", expand=True, padx=22, pady=20)
 
-        hero_top = tk.Frame(hero_card, bg=SURFACE_2)
-        hero_top.pack(fill="x", padx=18, pady=(18, 8))
+        self._build_header(shell)
 
-        logo_frame = tk.Frame(hero_top, bg=SURFACE_2)
-        logo_frame.pack(side="left", padx=(0, 16))
+        body = tk.Frame(shell, bg=BG)
+        body.pack(fill="both", expand=True, pady=(16, 0))
+        body.grid_columnconfigure(0, minsize=340, weight=0)
+        body.grid_columnconfigure(1, weight=1)
+        body.grid_rowconfigure(0, weight=1)
+
+        left = tk.Frame(body, bg=BG)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 14))
+        right = tk.Frame(body, bg=BG)
+        right.grid(row=0, column=1, sticky="nsew")
+        right.grid_rowconfigure(1, weight=1)
+        right.grid_columnconfigure(0, weight=1)
+
+        self._build_scan_panel(left)
+        self._build_actions(left)
+        self._build_log_panel(right)
+
+        self.progress = ttk.Progressbar(shell, mode="indeterminate", style="TProgressbar")
+        self.progress.pack(fill="x", pady=(14, 0))
+
+    def _build_header(self, parent: tk.Widget) -> None:
+        header = self._panel(parent, PANEL)
+        header.pack(fill="x")
+        header.grid_columnconfigure(1, weight=1)
+
+        brand = tk.Frame(header, bg=PANEL)
+        brand.grid(row=0, column=0, sticky="w", padx=18, pady=16)
         if self.logo_image is not None:
-            tk.Label(logo_frame, image=self.logo_image, bg=SURFACE_2).pack()
+            tk.Label(brand, image=self.logo_image, bg=PANEL).pack(side="left", padx=(0, 14))
         else:
-            tk.Label(
-                logo_frame,
-                text="CGA",
-                font=("Courier New", 24, "bold"),
-                bg=CARD,
-                fg=HIGHLIGHT,
-                width=5,
-                height=2,
-            ).pack()
+            tk.Label(brand, text="CGA", font=("Segoe UI", 18, "bold"), bg=ACCENT, fg=INK, padx=14, pady=10).pack(
+                side="left", padx=(0, 14)
+            )
 
-        title_block = tk.Frame(hero_top, bg=SURFACE_2)
-        title_block.pack(side="left", fill="x", expand=True)
-        tk.Label(title_block, text="Code, Growth Alive", font=FONT_TITLE, bg=SURFACE_2, fg=TEXT).pack(anchor="w")
+        title = tk.Frame(brand, bg=PANEL)
+        title.pack(side="left")
+        tk.Label(title, text="ClamAV Dest GUI", font=FONT_TITLE, bg=PANEL, fg=TEXT).pack(anchor="w")
         tk.Label(
-            title_block,
-            text="Security desk for ClamAV scans, database refreshes, and quarantine control.",
-            font=FONT_LABEL,
-            bg=SURFACE_2,
+            title,
+            text="Dark security console for disk scans, database updates, and quarantine control.",
+            font=FONT_MAIN,
+            bg=PANEL,
             fg=MUTED,
-        ).pack(anchor="w", pady=(4, 6))
+        ).pack(anchor="w", pady=(3, 0))
 
-        badges = tk.Frame(title_block, bg=SURFACE_2)
-        badges.pack(anchor="w", pady=(0, 6))
-        self._pill(badges, "Bukavu, Sud-Kivu", BLUE).pack(side="left", padx=(0, 8))
-        self._pill(badges, "Founded 2023", GREEN).pack(side="left", padx=(0, 8))
-        self._pill(badges, "Software + Multimedia + IT", YELLOW).pack(side="left")
+        status = tk.Frame(header, bg=PANEL)
+        status.grid(row=0, column=1, sticky="e", padx=18, pady=16)
+        tk.Label(status, text="STATUS", font=FONT_SMALL, bg=PANEL, fg=MUTED).pack(anchor="e")
+        line = tk.Frame(status, bg=PANEL)
+        line.pack(anchor="e", pady=(4, 0))
+        self.status_dot = tk.Label(line, text="●", font=("Segoe UI", 14), bg=PANEL, fg=MUTED)
+        self.status_dot.pack(side="left", padx=(0, 6))
+        tk.Label(line, textvariable=self.status_text, font=FONT_SECTION, bg=PANEL, fg=TEXT).pack(side="left")
 
-        status_box = tk.Frame(hero_top, bg=SURFACE_2)
-        status_box.pack(side="right", padx=(16, 0))
-        tk.Label(status_box, text="SERVICE STATUS", font=FONT_SUBTITLE, bg=SURFACE_2, fg=MUTED).pack(anchor="e")
-        status_row = tk.Frame(status_box, bg=SURFACE_2)
-        status_row.pack(anchor="e", pady=(4, 0))
-        self.status_dot = tk.Label(status_row, text="●", font=("Courier New", 14), bg=SURFACE_2, fg=MUTED)
-        self.status_dot.pack(side="left", padx=(0, 4))
-        tk.Label(status_row, textvariable=self.status_text, font=FONT_LABEL, bg=SURFACE_2, fg=TEXT).pack(side="left")
+    def _build_scan_panel(self, parent: tk.Widget) -> None:
+        panel = self._panel(parent, PANEL)
+        panel.pack(fill="x")
 
-        hero_bottom = tk.Frame(hero_card, bg=SURFACE_2)
-        hero_bottom.pack(fill="x", padx=18, pady=(0, 16))
-        self._metric(hero_bottom, "Files Scanned", self.scanned_count, GREEN).pack(side="left", padx=(0, 10))
-        self._metric(hero_bottom, "Infected Found", self.infected_count, ACCENT).pack(side="left", padx=(0, 10))
-        self._metric(hero_bottom, "Quarantine Ready", self.quarantine_ready, BLUE).pack(side="left")
+        self._section_title(panel, "Scan Target")
+        tk.Label(
+            panel,
+            text="Choose a mounted disk or partition. Refresh rescans the system mount list.",
+            font=FONT_SMALL,
+            bg=PANEL,
+            fg=MUTED,
+            wraplength=280,
+            justify="left",
+        ).pack(anchor="w", padx=16, pady=(0, 10))
 
-        config_card = tk.Frame(self, bg=SURFACE, relief="flat")
-        config_card.pack(fill="x", padx=24, pady=(0, 12))
+        disk_row = tk.Frame(panel, bg=PANEL)
+        disk_row.pack(fill="x", padx=16, pady=(0, 12))
+        self.disk_combo = ttk.Combobox(
+            disk_row,
+            textvariable=self.disk_choice,
+            values=[],
+            state="readonly",
+            style="Dark.TCombobox",
+            font=FONT_MAIN,
+        )
+        self.disk_combo.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.disk_combo.bind("<<ComboboxSelected>>", self._on_disk_selected)
+        self.btn_refresh_disks = self._icon_btn(disk_row, "↻", self._refresh_disks, ACCENT)
+        self.btn_refresh_disks.pack(side="right")
 
-        self._section_label(config_card, "SCAN CONFIGURATION")
-        self._path_row(config_card, "Disk to scan:", self.disk_path, self._browse_disk)
-        self._path_row(config_card, "Quarantine folder:", self.quarantine_path, self._browse_quarantine)
+        self.selected_disk = tk.Label(panel, textvariable=self.disk_path, font=FONT_SMALL, bg=PANEL, fg=ACCENT)
+        self.selected_disk.pack(anchor="w", padx=16, pady=(0, 16))
 
-        opts = tk.Frame(config_card, bg=SURFACE)
-        opts.pack(fill="x", padx=16, pady=(4, 12))
+        self._section_title(panel, "Quarantine")
+        self._path_row(panel, "Folder", self.quarantine_path, self._browse_quarantine)
 
+        opts = tk.Frame(panel, bg=PANEL)
+        opts.pack(fill="x", padx=16, pady=(8, 14))
         tk.Checkbutton(
             opts,
-            text="Run with sudo (recommended)",
+            text="Run privileged commands with sudo",
             variable=self.use_sudo,
-            bg=SURFACE,
+            bg=PANEL,
             fg=TEXT,
-            selectcolor=CARD,
-            activebackground=SURFACE,
+            selectcolor=FIELD,
+            activebackground=PANEL,
             activeforeground=TEXT,
-            font=FONT_LABEL,
-        ).pack(side="left")
-
-        actions = tk.Frame(self, bg=BG)
-        actions.pack(fill="x", padx=24, pady=(0, 12))
-
-        self.btn_update = self._btn(actions, "Refresh DB", self._run_freshclam, YELLOW)
-        self.btn_update.pack(side="left", padx=(0, 8))
-
-        self.btn_scan = self._btn(actions, "Start Scan", self._start_scan, GREEN)
-        self.btn_scan.pack(side="left", padx=(0, 8))
-
-        self.btn_stop = self._btn(actions, "Stop", self._stop_scan, ACCENT)
-        self.btn_stop.pack(side="left")
-        self.btn_stop.configure(state="disabled")
-
-        self.btn_quarantine = self._btn(actions, "Open Quarantine", self._open_quarantine, MUTED)
-        self.btn_quarantine.pack(side="right")
-
-        stats_frame = tk.Frame(self, bg=BG)
-        stats_frame.pack(fill="x", padx=24, pady=(0, 12))
-
-        self._stat_card(stats_frame, "Files Scanned", self.scanned_count, GREEN).pack(side="left", padx=(0, 8))
-        self._stat_card(stats_frame, "Infected Found", self.infected_count, ACCENT).pack(side="left")
-        self._info_card(stats_frame).pack(side="right", fill="both", expand=True, padx=(12, 0))
-
-        log_card = tk.Frame(self, bg=SURFACE)
-        log_card.pack(fill="both", expand=True, padx=24, pady=(0, 20))
-
-        log_header = tk.Frame(log_card, bg=SURFACE)
-        log_header.pack(fill="x", padx=12, pady=(10, 4))
-        tk.Label(log_header, text="SCAN LOG", font=("Courier New", 9, "bold"), bg=SURFACE, fg=MUTED).pack(side="left")
-        self._btn(log_header, "Clear", self._clear_log, MUTED, small=True).pack(side="right")
-
-        self.log = scrolledtext.ScrolledText(
-            log_card,
-            bg="#0a0a1a",
-            fg=TEXT,
             font=FONT_MAIN,
             relief="flat",
+        ).pack(anchor="w")
+
+        metrics = tk.Frame(panel, bg=PANEL)
+        metrics.pack(fill="x", padx=16, pady=(2, 16))
+        metrics.grid_columnconfigure((0, 1), weight=1, uniform="metric")
+        self._metric(metrics, "Scanned", self.scanned_count, ACCENT_2).grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        self._metric(metrics, "Infected", self.infected_count, DANGER).grid(row=0, column=1, sticky="ew", padx=(6, 0))
+
+    def _build_actions(self, parent: tk.Widget) -> None:
+        panel = self._panel(parent, PANEL)
+        panel.pack(fill="x", pady=(14, 0))
+        self._section_title(panel, "Actions")
+
+        self.btn_scan = self._btn(panel, "Start Scan", self._start_scan, ACCENT_2)
+        self.btn_scan.pack(fill="x", padx=16, pady=(0, 8))
+
+        self.btn_update = self._btn(panel, "Refresh Virus Database", self._run_freshclam, WARNING)
+        self.btn_update.pack(fill="x", padx=16, pady=(0, 8))
+
+        self.btn_stop = self._btn(panel, "Stop Scan", self._stop_scan, DANGER)
+        self.btn_stop.pack(fill="x", padx=16, pady=(0, 8))
+        self.btn_stop.configure(state="disabled")
+
+        self.btn_quarantine = self._btn(panel, "Open Quarantine", self._open_quarantine, BORDER, fg=TEXT)
+        self.btn_quarantine.pack(fill="x", padx=16, pady=(0, 16))
+
+    def _build_log_panel(self, parent: tk.Widget) -> None:
+        toolbar = self._panel(parent, PANEL)
+        toolbar.grid(row=0, column=0, sticky="ew", pady=(0, 12))
+        toolbar.grid_columnconfigure(0, weight=1)
+        tk.Label(toolbar, text="Scan Log", font=("Segoe UI", 14, "bold"), bg=PANEL, fg=TEXT).grid(
+            row=0, column=0, sticky="w", padx=16, pady=13
+        )
+        self._btn(toolbar, "Clear", self._clear_log, BORDER, small=True, fg=TEXT).grid(
+            row=0, column=1, sticky="e", padx=16, pady=12
+        )
+
+        log_panel = self._panel(parent, PANEL)
+        log_panel.grid(row=1, column=0, sticky="nsew")
+        self.log = scrolledtext.ScrolledText(
+            log_panel,
+            bg=FIELD,
+            fg=TEXT,
+            font=FONT_MONO,
+            relief="flat",
             insertbackground=TEXT,
-            selectbackground=CARD,
+            selectbackground="#1f3b57",
             wrap="word",
             state="disabled",
             bd=0,
-            padx=12,
-            pady=8,
+            padx=14,
+            pady=12,
         )
-        self.log.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        self.log.pack(fill="both", expand=True, padx=12, pady=12)
 
-        self.log.tag_config("infected", foreground=ACCENT)
-        self.log.tag_config("ok", foreground=GREEN)
-        self.log.tag_config("info", foreground=YELLOW)
+        self.log.tag_config("infected", foreground=DANGER)
+        self.log.tag_config("ok", foreground=ACCENT_2)
+        self.log.tag_config("info", foreground=WARNING)
         self.log.tag_config("muted", foreground=MUTED)
 
-        self.progress = ttk.Progressbar(self, mode="indeterminate", length=400)
-        style = ttk.Style(self)
-        style.theme_use("default")
-        style.configure("TProgressbar", troughcolor=SURFACE, background=GREEN, thickness=4)
-        self.progress.pack(fill="x", padx=24, pady=(0, 16))
+    def _panel(self, parent: tk.Widget, bg: str) -> tk.Frame:
+        return tk.Frame(parent, bg=bg, highlightthickness=1, highlightbackground=BORDER, highlightcolor=BORDER)
 
-    def _section_label(self, parent, text):
-        tk.Label(parent, text=text, font=("Courier New", 9, "bold"), bg=SURFACE, fg=MUTED).pack(
-            anchor="w", padx=16, pady=(10, 4)
+    def _section_title(self, parent: tk.Widget, text: str) -> None:
+        tk.Label(parent, text=text.upper(), font=FONT_SECTION, bg=PANEL, fg=MUTED).pack(
+            anchor="w", padx=16, pady=(14, 8)
         )
 
-    def _pill(self, parent, text, color):
-        return tk.Label(
-            parent,
-            text=text,
-            font=("Courier New", 9, "bold"),
-            bg=color,
-            fg="#08111f",
-            padx=10,
-            pady=4,
-        )
-
-    def _metric(self, parent, label, var, color):
-        frame = tk.Frame(parent, bg=SURFACE_2, highlightthickness=1, highlightbackground="#20304f")
-        tk.Label(frame, text=label, font=FONT_SUBTITLE, bg=SURFACE_2, fg=MUTED).pack(padx=14, pady=(10, 0))
-        tk.Label(frame, textvariable=var, font=("Courier New", 20, "bold"), bg=SURFACE_2, fg=color).pack(
-            padx=18, pady=(0, 10)
+    def _metric(self, parent: tk.Widget, label: str, var: tk.Variable, color: str) -> tk.Frame:
+        frame = tk.Frame(parent, bg=PANEL_2, highlightthickness=1, highlightbackground=BORDER)
+        tk.Label(frame, text=label, font=FONT_SMALL, bg=PANEL_2, fg=MUTED).pack(anchor="w", padx=12, pady=(10, 0))
+        tk.Label(frame, textvariable=var, font=("Segoe UI", 20, "bold"), bg=PANEL_2, fg=color).pack(
+            anchor="w", padx=12, pady=(0, 10)
         )
         return frame
 
-    def _path_row(self, parent, label, var, cmd):
-        row = tk.Frame(parent, bg=SURFACE)
-        row.pack(fill="x", padx=16, pady=3)
-        tk.Label(row, text=label, font=FONT_LABEL, bg=SURFACE, fg=MUTED, width=18, anchor="w").pack(side="left")
-        tk.Entry(row, textvariable=var, bg=CARD, fg=TEXT, insertbackground=TEXT, relief="flat", font=FONT_LABEL, bd=4).pack(
-            side="left", fill="x", expand=True, padx=(0, 8)
-        )
-        self._btn(row, "Browse", cmd, MUTED, small=True).pack(side="right")
+    def _path_row(self, parent: tk.Widget, label: str, var: tk.StringVar, cmd) -> None:
+        row = tk.Frame(parent, bg=PANEL)
+        row.pack(fill="x", padx=16, pady=(0, 8))
+        tk.Label(row, text=label, font=FONT_SMALL, bg=PANEL, fg=MUTED).pack(anchor="w")
+        line = tk.Frame(row, bg=PANEL)
+        line.pack(fill="x", pady=(5, 0))
+        tk.Entry(
+            line,
+            textvariable=var,
+            bg=FIELD,
+            fg=TEXT,
+            insertbackground=TEXT,
+            relief="flat",
+            font=FONT_MAIN,
+            bd=0,
+            highlightthickness=1,
+            highlightbackground=BORDER,
+            highlightcolor=ACCENT,
+        ).pack(side="left", fill="x", expand=True, ipady=8, padx=(0, 8))
+        self._btn(line, "Browse", cmd, BORDER, small=True, fg=TEXT).pack(side="right")
 
-    def _btn(self, parent, text, cmd, color, small=False):
-        font = ("Courier New", 9) if small else ("Courier New", 10, "bold")
-        pad = (6, 3) if small else (14, 7)
+    def _btn(self, parent: tk.Widget, text: str, cmd, color: str, small: bool = False, fg: str = INK) -> tk.Button:
         return tk.Button(
             parent,
             text=text,
             command=cmd,
             bg=color,
-            fg="#0a0a1a",
-            font=font,
+            fg=fg,
+            font=FONT_SMALL if small else FONT_SECTION,
             relief="flat",
             cursor="hand2",
-            padx=pad[0],
-            pady=pad[1],
+            padx=10 if small else 16,
+            pady=5 if small else 10,
             activebackground=color,
-            activeforeground="#0a0a1a",
+            activeforeground=fg,
+            disabledforeground="#5b6675",
+            bd=0,
         )
 
-    def _stat_card(self, parent, label, var, color):
-        frame = tk.Frame(parent, bg=SURFACE, relief="flat")
-        tk.Label(frame, text=label, font=("Courier New", 9), bg=SURFACE, fg=MUTED).pack(pady=(8, 0))
-        tk.Label(frame, textvariable=var, font=("Courier New", 22, "bold"), bg=SURFACE, fg=color).pack(
-            padx=24, pady=(0, 8)
+    def _icon_btn(self, parent: tk.Widget, text: str, cmd, color: str) -> tk.Button:
+        return tk.Button(
+            parent,
+            text=text,
+            command=cmd,
+            bg=color,
+            fg=INK,
+            font=("Segoe UI", 15, "bold"),
+            relief="flat",
+            cursor="hand2",
+            width=3,
+            pady=2,
+            activebackground=color,
+            activeforeground=INK,
+            bd=0,
         )
-        return frame
-
-    def _info_card(self, parent):
-        frame = tk.Frame(parent, bg=SURFACE, relief="flat", highlightthickness=1, highlightbackground="#20304f")
-        tk.Label(frame, text="Code, Growth Alive", font=FONT_SUBTITLE, bg=SURFACE, fg=TEXT).pack(anchor="w", padx=14, pady=(10, 2))
-        tk.Label(
-            frame,
-            text="Software development, web presence, multimedia, and support services for teams and individuals.",
-            font=FONT_LABEL,
-            wraplength=280,
-            justify="left",
-            bg=SURFACE,
-            fg=MUTED,
-        ).pack(anchor="w", padx=14, pady=(0, 10))
-        return frame
 
     def _load_logo(self):
         candidates = [
@@ -270,7 +333,7 @@ class MainWindow(tk.Tk):
             if candidate.exists():
                 try:
                     image = tk.PhotoImage(file=str(candidate))
-                    target_width = 168
+                    target_width = 72
                     if image.width() > target_width:
                         factor = max(1, image.width() // target_width)
                         image = image.subsample(factor, factor)
@@ -279,10 +342,34 @@ class MainWindow(tk.Tk):
                     continue
         return None
 
-    def _browse_disk(self):
-        path = filedialog.askdirectory(title="Select disk/folder to scan")
-        if path:
-            self.disk_path.set(path)
+    def _refresh_disks(self, log: bool = True) -> None:
+        self.disk_targets = self.service.list_scan_targets()
+        self.disk_labels = {target.label: target for target in self.disk_targets}
+        labels = list(self.disk_labels)
+        self.disk_combo.configure(values=labels)
+
+        current_path = self.disk_path.get()
+        selected = next((label for label, target in self.disk_labels.items() if str(target.path) == current_path), "")
+        if not selected and labels:
+            selected = labels[0]
+
+        if selected:
+            self.disk_choice.set(selected)
+            self._set_selected_disk(self.disk_labels[selected])
+        else:
+            self.disk_choice.set("")
+            self.disk_path.set("")
+
+        if log:
+            self._log(f"Disk list refreshed: {len(labels)} target(s) available.", "info")
+
+    def _set_selected_disk(self, target: DiskTarget) -> None:
+        self.disk_path.set(str(target.path))
+
+    def _on_disk_selected(self, _event=None) -> None:
+        target = self.disk_labels.get(self.disk_choice.get())
+        if target is not None:
+            self._set_selected_disk(target)
 
     def _browse_quarantine(self):
         path = filedialog.askdirectory(title="Select quarantine folder")
@@ -316,11 +403,12 @@ class MainWindow(tk.Tk):
         state_off = "normal" if active else "disabled"
         self.btn_scan.configure(state=state_on)
         self.btn_update.configure(state=state_on)
+        self.btn_refresh_disks.configure(state=state_on)
         self.btn_stop.configure(state=state_off)
         if active:
             self.progress.start(12)
-            self.status_text.set("Scanning...")
-            self.status_dot.configure(fg=GREEN)
+            self.status_text.set("Working")
+            self.status_dot.configure(fg=ACCENT_2)
         else:
             self.progress.stop()
             self.status_text.set("Idle")
@@ -336,7 +424,7 @@ class MainWindow(tk.Tk):
         def task():
             try:
                 self.after(0, self._set_scanning, True)
-                self.service.update_database()
+                self.service.update_database(self.use_sudo.get())
             except FileNotFoundError:
                 self._schedule_log("ERROR: freshclam or sudo not found. Install ClamAV first.", "infected")
             except Exception as error:
@@ -351,13 +439,14 @@ class MainWindow(tk.Tk):
         quarantine = self.quarantine_path.get().strip()
 
         if not disk:
-            messagebox.showwarning("Missing path", "Please select a disk/folder to scan.")
+            messagebox.showwarning("Missing disk", "Select a disk from the list first.")
             return
 
         try:
             target_path = self.service.validate_target(disk)
         except FileNotFoundError as error:
-            messagebox.showerror("Invalid path", str(error))
+            messagebox.showerror("Invalid disk", str(error))
+            self._refresh_disks()
             return
 
         command = self.service.build_scan_command(str(target_path), quarantine, self.use_sudo.get())
@@ -371,7 +460,7 @@ class MainWindow(tk.Tk):
             try:
                 self.service.start_scan(command)
             except FileNotFoundError:
-                self._schedule_log("ERROR: clamscan not found. Install ClamAV first.", "infected")
+                self._schedule_log("ERROR: clamscan or sudo not found. Install ClamAV first.", "infected")
             except Exception as error:
                 self._schedule_log(f"ERROR: {error}", "infected")
             finally:
