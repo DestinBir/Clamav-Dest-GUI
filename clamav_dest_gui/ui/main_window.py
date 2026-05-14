@@ -196,7 +196,8 @@ class MainWindow(tk.Tk):
 
         metrics = tk.Frame(panel, bg=PANEL)
         metrics.pack(fill="x", padx=16, pady=(2, 16))
-        metrics.grid_columnconfigure((0, 1), weight=1, uniform="metric")
+        for column in (0, 1):
+            metrics.grid_columnconfigure(column, weight=1, uniform="metric")
         self._metric(metrics, "Scanned", self.scanned_count, ACCENT_2).grid(row=0, column=0, sticky="ew", padx=(0, 6))
         self._metric(metrics, "Infected", self.infected_count, DANGER).grid(row=0, column=1, sticky="ew", padx=(6, 0))
 

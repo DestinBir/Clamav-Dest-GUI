@@ -203,22 +203,28 @@ class ClamAVService:
         targets: list[DiskTarget] = []
 
         def visit(device: dict, parent_name: str = "") -> None:
+            device_type = str(device.get("type") or "")
+            filesystem = str(device.get("fstype") or "")
+            if device_type == "loop" or filesystem == "squashfs":
+                return
+
             name = device.get("label") or device.get("name") or parent_name or "Disk"
             mountpoints = device.get("mountpoints") or []
             if isinstance(mountpoints, str):
                 mountpoints = [mountpoints]
 
-            for mountpoint in mountpoints:
-                if mountpoint:
-                    targets.append(
-                        DiskTarget(
-                            name=str(name),
-                            path=Path(mountpoint),
-                            size=str(device.get("size") or ""),
-                            filesystem=str(device.get("fstype") or ""),
-                            removable=bool(device.get("rm")),
-                        )
+            valid_mountpoints = [mountpoint for mountpoint in mountpoints if mountpoint]
+            if valid_mountpoints:
+                mountpoint = sorted(valid_mountpoints, key=lambda item: (item.count("/"), item))[0]
+                targets.append(
+                    DiskTarget(
+                        name=str(name),
+                        path=Path(mountpoint),
+                        size=str(device.get("size") or ""),
+                        filesystem=filesystem,
+                        removable=ClamAVService._as_bool(device.get("rm")),
                     )
+                )
 
             for child in device.get("children") or []:
                 visit(child, str(name))
@@ -242,3 +248,13 @@ class ClamAVService:
         except OSError:
             return []
         return targets
+
+    @staticmethod
+    def _as_bool(value: object) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, int):
+            return value != 0
+        if isinstance(value, str):
+            return value.lower() in {"1", "true", "yes"}
+        return False
